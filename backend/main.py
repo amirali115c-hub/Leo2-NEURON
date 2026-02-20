@@ -90,8 +90,29 @@ async def learn(request: LearnRequest, db: Session = Depends(get_db)):
         "goals": goals_list
     }
     
-    # Process learning
-    result = await llm.learn(request.user_input, context, request.strategy)
+    # Process learning with error handling
+    try:
+        result = await llm.learn(request.user_input, context, request.strategy)
+    except Exception as e:
+        # LLM not available, save basic entry
+        entry = KBEntry(
+            user_input=request.user_input,
+            response=f"LLM unavailable. Saved for later processing.",
+            key_insight=f"User asked about: {request.user_input[:100]}",
+            domain="General",
+            strategy=request.strategy,
+            complexity="basic",
+            confidence=0.5,
+            reliability=0.5
+        )
+        db.add(entry)
+        db.commit()
+        return {
+            "status": "success", 
+            "entry_id": entry.id, 
+            "learned": None,
+            "message": "LLM unavailable, entry saved for later processing"
+        }
     
     if not result.get("learned"):
         # No structured learning, just save basic entry

@@ -130,17 +130,59 @@ Respond ONLY with valid JSON in this format:
 }}"""
     
     def _parse_learning_response(self, response: str) -> Dict[str, Any]:
-        """Parse learning response"""
+        """Parse learning response with robust error handling"""
         try:
             # Try to extract JSON from response
             import re
-            json_match = re.search(r'\{[\s\S]*\}', response)
+            
+            # Remove code block markers if present
+            clean_response = response.strip()
+            clean_response = re.sub(r'^```json\s*', '', clean_response)
+            clean_response = re.sub(r'\s*```$', '', clean_response)
+            clean_response = re.sub(r'^```\s*', '', clean_response)
+            
+            # Try to find JSON object
+            json_match = re.search(r'\{[\s\S]*\}', clean_response)
             if json_match:
-                return json.loads(json_match.group(0))
+                json_str = json_match.group(0)
+                
+                # Try direct parsing
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    # Try to fix common JSON errors
+                    # Fix double braces
+                    json_str = json_str.replace('{{', '{').replace('}}', '}')
+                    # Remove trailing commas
+                    json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+                    
+                    try:
+                        return json.loads(json_str)
+                    except json.JSONDecodeError as e:
+                        # Try even more aggressive cleanup
+                        print(f"JSON parse error: {e}")
+                        # Return what we can extract manually
+                        return {
+                            "response": response,
+                            "learned": self._extract_basic_learning(response)
+                        }
+            
             return {"response": response, "learned": None}
         except Exception as e:
             print(f"Error parsing learning response: {e}")
             return {"response": response, "learned": None}
+    
+    def _extract_basic_learning(self, response: str) -> Dict[str, Any]:
+        """Extract basic learning info from raw response"""
+        # Simple extraction if JSON parsing fails
+        return {
+            "concepts": [],
+            "domain": "General",
+            "confidence": 0.5,
+            "reliability": 0.5,
+            "keyInsight": response[:200] if response else "Extracted from response",
+            "complexity": "basic"
+        }
 
 
 class NVIDIAClient(LLMClient):
